@@ -1,0 +1,346 @@
+---
+title: "Predicting Total Damages Awarded to Plaintiffs in Civil Cases"
+author:
+- Manish Nagireddy
+- mnagired
+date: "Due Weds, October 16, at 8:00PM"
+output:
+  pdf_document:
+    toc: true
+---
+
+```{r, echo = FALSE, include=FALSE}
+###########################
+# STYLE EDITS: IGNORE THIS
+###########################
+knitr::opts_chunk$set(message = FALSE) # include this if you don't want markdown to knit messages
+knitr::opts_chunk$set(warning = FALSE) # include this if you don't want markdown to knit warnings
+knitr::opts_chunk$set(echo = TRUE) # set echo=FALSE to hide code from html output
+```
+
+
+```{r, echo=FALSE}
+
+library("knitr")
+library("cmu202")
+library("kableExtra")
+library("pander")
+library("readr")
+library("magrittr")
+library("car")
+library("jtools")
+
+```
+
+
+```{r, echo=FALSE}
+#######################
+### Loading the data
+######################
+# First, download the .rda data file from canvas. 
+# Then, upload it to shimmer as you would do to a Lab or HW file. 
+# Finally, to load the data, use the reader::read_rds() function on the .rda file in quotes, and assign the result to some name.
+# for example:
+# social <- readr::read_rds("social.rda")
+
+```
+
+```{r, echo=FALSE}
+
+courtData <- readr::read_rds("court.rda")
+
+```
+
+# Introduction
+
+Although everyone loves reading about Supreme Court cases, the common citizen's experience with the judicial system is usually with civil courts, if at all. Thus, when a qualm arises about the nature of damages awarded to the plaintiff, it must be taken with serious consideration as such decisions will likely impact most people's lives in some capacity at a point in time. This project, therefore, seeks to discover whether there exists a significant relationship between the total damages awarded to a plaintiff and a variety of factors, such as total amount of damages requested by the plaintiff, the length of trial, and the type of claim made by the plaintiff.
+
+# Exploratory Data Analysis
+
+##Data
+
+In the court data, we analyze a random sample of 126 cases and 4 variables. Because of our interest in total damages awarded to the plaintiff, we look at the relationship between total damages and the three explanatory variables: total amount of damages demanded by the plaintiff, length of the trial, and type of claim made by the plaintiff.
+
+`TOTDAM`: total amount of damages awarded to plaintiff (in $)
+
+`DEMANDED`: total amount of damages requested from the court by plaintiff (in $)
+
+`TRIDAYS`: how many days the trial lasted
+
+`CLAIMTYPE`: type of claim the plaintiff made - *categorized as follows:* 1: motor vehicle; 2: premises liability; 3: malpractice; 4: fraud; 5: rental/lease ; 6: other
+
+The first few lines of data appear as follows:
+
+```{r, echo=FALSE}
+
+print(head(courtData, n = 10))
+
+```
+
+## Univariate Exploration
+
+A common first step in analysis is to explore each variable individually. We use histograms to explore the distribution of our quantitative (continuous) variables (total damages, total damages demanded, trial days) and a barplot to describe our categorical variable (claim type).
+
+```{r, echo=FALSE}
+
+hist(courtData$TOTDAM, main = "Histogram of Total Damages (Y)",
+     xlab = "Total Damages ($)",
+     ylab = "Frequency")
+
+hist(courtData$DEMANDED, main = "Histogram of Total Damages Demanded",
+     xlab = "Total Damages Demanded ($)",
+     ylab = "Frequency")
+     
+
+hist(courtData$TRIDAYS, main = "Histogram of Trial Length",
+     xlab = "Trial Length (days)",
+     ylab = "Frequency")
+
+barplot(table(courtData$CLAIMTYPE), main = "Bar Chart of Claim Type",
+        xlab = "Claim Types",
+        ylab = "Frequency",
+        cex.axis = 0.75,
+        cex.names = 0.75)
+
+```
+
+We supplement the univariate graphical summaries with the following numerical summaries:
+
+For Total Damages: 
+```{r, echo=FALSE}
+summary(courtData$TOTDAM)
+sd(courtData$TOTDAM)
+```
+
+For Total Damages Demanded: 
+```{r, echo=FALSE}
+summary(courtData$DEMANDED)
+sd(courtData$DEMANDED)
+```
+
+For Length of Trial: 
+```{r, echo=FALSE}
+summary(courtData$TRIDAYS)
+sd(courtData$TRIDAYS)
+```
+
+For Claim Type: 
+```{r, echo=FALSE}
+summary(courtData$CLAIMTYPE)
+```
+
+After looking at both the graphs and the summary statistics of our four variables, we can make the following observations: 
+
+The distribution of total damages (`TOTDAM`) is clearly right skewed and unimodal, with a mean of $51,279. The distribution of total damages demanded (`DEMANDED`) is also clearly right skewed, but the graph becomes distorted because of the data point in row 99, with a value of 10000000 for the total damges demanded. The distribution of trial length (`TRIDAYS`) is also right skewed, as most trials are under 10 days. Looking at our only categorical variable (`CLAIMTYPE`), we see the types of claims distributed in the following manner: 35 motor, 6 premises, 2 malpractice, 10 fraud, 4 rental, and 69 other types of claims.
+
+##Bivariate Exploration
+
+Now that we understand the distributions of the variables in our data, we can look graphically at how each predictor is associated with the response variable, total damages (`TOTDAM`).
+
+```{r, echo=FALSE}
+
+plot(TOTDAM~DEMANDED, data = courtData,
+     main = "Relationship Between Total Damages and Damages Demanded",
+     xlab = "Total Damages Demanded ($)",
+     ylab = "Total Damages ($)")
+
+plot(TOTDAM~TRIDAYS, data = courtData,
+     main = "Relationship Between Total Damages and Length of Trial",
+     xlab = "Length of Trial (days)",
+     ylab = "Total Damages Demanded ($)")
+
+boxplot(TOTDAM ~ CLAIMTYPE,
+        data = courtData,
+        main = "Total Damages vs. Claim Type",
+        xlab = "Claim Type",
+        ylab = "Total Damages ($)",
+        cex.axis = 0.75,
+        cex.names = 0.75)
+
+```
+
+When exploring the bivariate data, we see that the total damages does not appear to have a strong linear association with either of the quantitative variables. Perhaps, at best, total damages has an extremely weak negative relationship with the length of the trial. This can likely be explained by the fact that the distribution of total damages is staggeringly skewed right, meaning we would have to try some power or log transformations. Additionally, there does not seem to be enough of a difference in total damages between the types of claims to justify hypthesizing that claim type significantly affects total damages (but again we need to transform the response variable before making any sound judgments).
+
+# Modeling
+
+```{r, echo=FALSE}
+
+logTotDam <- log(courtData$TOTDAM)
+
+courtData$logTotDam <- logTotDam
+
+hist(logTotDam, main = "Log of Total Damages")
+
+```
+If we take the log of total damages, the resulting distrbution becomes skewed left which means we cannot use it.
+
+
+```{r, echo = FALSE}
+
+totDam8th <- (courtData$TOTDAM) ^ (1/8)
+
+courtData$totDam8th <- totDam8th
+
+damagesDividedBy1000 <- courtData$DEMANDED / 1000
+
+courtData$damagesDividedBy1000 <- damagesDividedBy1000
+
+hist(totDam8th, main = "Power Transformation on Total Damages",
+     xlab = "Total Damages ^ 1/8")
+
+```
+
+If we raise the response variable to the 8th, it appears that we have a reasonably symmetric distribution. Although this will make the interpretations of our results rather hard to apply, the ability to use reasonably symmetric data is well worth the tradeoff. 
+
+```{r, echo=FALSE}
+
+plot(totDam8th~damagesDividedBy1000, data = courtData,
+     main = "Relationship Between Total Damages^(1/8) and Damages Demanded",
+     xlab = "Total Damages Demanded ($1000s)",
+     ylab = "Total Damages^(1/8) ($)",
+     cex.main = 1)
+
+plot(totDam8th~damagesDividedBy1000, data = courtData,
+     main = "Relationship Between Total Damages^(1/8) and Damages Demanded",
+     xlab = "Total Damages Demanded ($1000s)",
+     ylab = "Total Damages^(1/8) ($)",
+     xlim = c(0, 250),
+     cex.main = 1)
+
+plot(totDam8th~TRIDAYS, data = courtData,
+     main = "Relationship Between Total Damages^(1/8) and Length of Trial",
+     xlab = "Length of Trial (days)",
+     ylab = "Total Damages^(1/8) ($)",
+     cex.main = 1)
+
+plot(totDam8th~TRIDAYS, data = courtData,
+     main = "Relationship Between Total Damages^(1/8) and Length of Trial",
+     xlab = "Length of Trial (days)",
+     ylab = "Total Damages^(1/8) ($)",
+     xlim = c(0, 10),
+     cex.main = 1)
+
+boxplot(totDam8th ~ CLAIMTYPE,
+        data = courtData,
+        main = "Total Damages^(1/8) vs. Claim Type",
+        xlab = "Claim Type",
+        ylab = "Total Damages^(1/8) ($)",
+        cex.axis = 0.75,
+        cex.names = 0.75)
+
+```
+After raising the response variable to the 1/8th power, we can see some associations with the response variables emerging. When we limit the range of the Damages Demanded to $250 (thousand), we see a weak positive linear relationship with (total damages) ^ 1/8. By limiting the length of the trial to 10 days, we can also see a weak positive relationship with the (total damages) ^ 1/8. Although it doesn't jump out to us immediately, we cannot disregard the categorical variable (claim type) as it may have an association with the (total damages)^1/8th power. 
+
+Therefore, all variables may be useful in this model, but we need to first check for multicollinearity. An indication of possible multicollinearity is when we get relatively strong correlations between pairs of explanatory variables and for this we use the pairs plot as well as a correlation matrix.
+
+```{r, echo=FALSE}
+
+courtData.noClaimType <- subset(courtData, 
+                                select = -c(CLAIMTYPE, logTotDam))
+
+round(cor(courtData.noClaimType), digits = 2)
+
+pairs(courtData.noClaimType, main = "Relationships between the Quantitative Variables")
+
+```
+
+When we look at the pairs plot and observe the correlation between `TOTDAM` and our quantitative predictors (`DEMANDED` and `TRIDAYS`), we see that there is a rather weak positive correlation, at 0.35 for each predictor.
+
+We can also check if there's a significant interaction between our categorical factor (`CLAIMTYPE`) and each of the quantitative predictors (`DEMANDED` and `TRIDAYS`):
+
+```{r,echo=FALSE}
+
+courtModel1 <- lm(totDam8th ~ DEMANDED + TRIDAYS + CLAIMTYPE,
+                  data = courtData)
+
+```
+
+```{r,echo=FALSE}
+
+interact_plot(courtModel1,
+              pred = DEMANDED,
+              modx = CLAIMTYPE,
+              y.label = "Total Damages^ (1/8) ($)",
+              x.label = "Total Damages Demanded",
+              main = "Interaction Between Damages Demanded and Claim Type?",
+              plot.points = TRUE)
+
+interact_plot(courtModel1,
+              pred = TRIDAYS,
+              modx = CLAIMTYPE,
+              y.label = "Total Damages^ (1/8) ($)",
+              x.label = "Length of Trial (days)",
+              main = "Interaction Between Damages Demanded and Trial Length?",
+              plot.points = TRUE)
+
+```
+
+At first glance, it seems as though there is not a significant interaction between damages demanded and claim type nor is there a significant interaction between length of trial and claim type. However, we should run an interaction model just to be safe...
+
+```{r, echo=FALSE}
+
+interactionModel <- lm(totDam8th ~ DEMANDED + TRIDAYS + DEMANDED:CLAIMTYPE + TRIDAYS:CLAIMTYPE,
+                       data = courtData)
+
+summary(interactionModel)
+
+```
+
+From the regression output, we see that there both interaction terms are significant and thus we must retain all the explanatory predictors (and the respective vifs do not matter because we have a significant interaction). Now, we move on to the residual diagnostics to determine if the assumptions for our errors are met.
+
+```{r, echo = FALSE}
+
+plot(interactionModel, which = 1)
+
+plot(interactionModel, which = 2)
+
+```
+
+From the residual diagnostics, we see that the errors are reasonably independent because the residuals appear to be generally scattered above and below the zero line. We can also state that the mean is 0 because the residuals are reasonably centered around 0. Additionally, there appears to be constant spread above and below the zero line. From the qq plot, we gather that points are generally close to the diagonal, aside from the data points at the positive extremes which is enough for us to satisfy the assumption for normality.
+
+```{r,echo = FALSE}
+
+courtDataMod <- lm(totDam8th ~ DEMANDED + TRIDAYS + CLAIMTYPE,
+                   data = courtData)
+
+car::vif(courtDataMod)
+
+```
+
+Even though we don't need to look for vifs because we have a significant interaction, if we calculate the vifs for a multiple linear regression we see that none of them are above 2.5 which means we don't have any multicollinearity issues either way.
+
+Here are the summary statistics for our interaction model again:
+
+```{r, echo = FALSE}
+
+summary(interactionModel)
+
+```
+
+Although the multiple regression model may have come up with a higher coefficient of determination, since we tested whether there was an interaction and found actually two significant interactions, we can reasonably use this model to predict the total damages(^1/8) awarded to the plaintiff. We know this model is significant because of the p-value of 0.0002034. The beta1 and beta2 coefficients are both negative which tell us that as plaintiffs demand more money or as the trial goes on for a longer period of time, the total damages(^1/8) awarded to the plaintiff decreases.
+
+# Prediction
+
+Now that we have a model that reasonably satisfies all assumptions, we are interested in predicting the amount awarded to a plaintiff who demands $100,000, has a trial of five days long, and a malpractice claimtype.
+
+The predicted damages awarded (to the 1/8th power) is as follows:
+
+```{r}
+
+3.391 + (-9.146 * 10^-8) * 100000 + (-2.945 * 10^-2)*5 +
+  (8.404* 10^-06)*1 + (-2.979 * 10^-01)*1
+
+```
+
+Note: The software-created dummy variables `DEMANDED:CLAIMTYPEMalpractice` and `TRIDAYS:CLAIMTYPEMalpractice` are understood to be 1 for Malpractice claims and 0 for any other claim types.
+
+Therefore, we predict that the damages awarded (to the 1/8th power) for plaintiff who demands $100,000 with a trial of five days long and a malpractice claim are 2.936712.
+
+# Discussion
+
+In this analysis, we learned that the total damages awarded (to the 1/8th power) to plaintiffs can be modeled by the total damages demanded by the plaintiff, the length of the trial, and the type of claim made through an interaction model. 
+
+Initially, the distribution of total damages awarded (the response variable) was clearly skewed right and so we needed to transform this variable by raising it to the 1/8th power which made the resultant distribution reasonably symmetric. Nevertheless, this made intepreting our results much more difficult which is a limitation of this analysis. However, the outliers in the damages demanded predictor variable are worth looking into, as they may have affected our model. 
+
+It is interesting, however, that we can say the total damages awarded (raised to the 1/8th power) to the plaintiffs are significantly impacted by the type of claim they make. Perhaps this raises some additional questions about the influence of certain factors on the amount of damages awarded to plaintiffs in civil cases.
+
